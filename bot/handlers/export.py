@@ -70,18 +70,20 @@ async def export_data(callback: CallbackQuery) -> None:
     total_income = 0.0
 
     for operation, category in rows:
+        # amount приходит как Decimal -> приводим к float.
+        amount = float(operation.amount)
         cat_label = f"{category.icon} {category.name}" if category else "—"
         sheet.append([
             operation.operation_date.strftime("%d.%m.%Y"),
             TYPE_LABEL.get(operation.type, operation.type),
-            round(operation.amount, 2),
+            round(amount, 2),
             cat_label,
             operation.raw_text or "",
         ])
         if operation.type == "expense":
-            total_expense += operation.amount
+            total_expense += amount
         else:
-            total_income += operation.amount
+            total_income += amount
 
     # Пустая строка + итоги.
     sheet.append([])
@@ -102,12 +104,14 @@ async def export_data(callback: CallbackQuery) -> None:
     filename = f"operations_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
     file = BufferedInputFile(buffer.read(), filename=filename)
 
+    caption = (
+        f"📤 Готово! Всего операций: {len(rows)}\n\n"
+        f"💸 Расходы: {int(round(total_expense)):,} ₽\n".replace(",", " ")
+        + f"💰 Доходы: {int(round(total_income)):,} ₽".replace(",", " ")
+    )
+
     await callback.message.answer_document(
         document=file,
-        caption=(
-            f"📤 Готово! Всего операций: {len(rows)}\n\n"
-            f"💸 Расходы: {int(round(total_expense)):,} ₽\n".replace(",", " ") +
-            f"💰 Доходы: {int(round(total_income)):,} ₽".replace(",", " ")
-        ),
+        caption=caption,
         reply_markup=back_to_menu_keyboard(),
     )
