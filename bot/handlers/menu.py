@@ -176,4 +176,37 @@ async def show_recent(callback: CallbackQuery) -> None:
     else:
         lines = ["📝 Последние операции:", ""]
         for operation, category in rows:
-            sign
+            sign = "−" if operation.type == "expense" else "+"
+            cat_label = f"{category.icon} {category.name}" if category else "без категории"
+            day = operation.operation_date.strftime("%d.%m")
+            line = f"{day}  {sign}{format_money(operation.amount)}  {cat_label}"
+            if operation.raw_text:
+                line += f" — {operation.raw_text}"
+            lines.append(line)
+        text = "\n".join(lines)
+
+    await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard())
+    await callback.answer()
+
+
+# =========================================================
+#  ЗАГЛУШКИ — подключим в заходах 2 и 3
+# =========================================================
+@router.callback_query(F.data == "export")
+async def stub_export(callback: CallbackQuery) -> None:
+    await callback.answer("🚧 Экспорт скоро появится", show_alert=True)
+
+
+@router.callback_query(F.data == "search")
+async def stub_search(callback: CallbackQuery) -> None:
+    await callback.answer("🚧 Поиск скоро появится", show_alert=True)
+
+
+@router.callback_query(F.data == "family")
+async def stub_family(callback: CallbackQuery) -> None:
+    await callback.answer("🚧 Семья скоро появится", show_alert=True)
+
+
+@router.callback_query(F.data == "splitwise")
+async def stub_splitwise(callback: CallbackQuery) -> None:
+    await callback.answer("🚧 Splitwise скоро появится", show_alert=True)
