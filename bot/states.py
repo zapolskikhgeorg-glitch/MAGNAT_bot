@@ -2,13 +2,17 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class AddOperation(StatesGroup):
-    waiting_category = State()   # выбор категории расхода (быстрый ввод)
+    waiting_category = State()
 
 
 class AddIncome(StatesGroup):
-    waiting_amount = State()     # ввод суммы дохода
-    waiting_category = State()   # выбор категории дохода
+    waiting_amount = State()
+    waiting_category = State()
 
 
 class AddLimit(StatesGroup):
-    waiting_amount = State()     # ввод суммы лимита
+    waiting_amount = State()
+
+
+class AddCategory(StatesGroup):
+    waiting_name = State()   # ввод названия новой категории
