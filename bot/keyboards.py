@@ -96,8 +96,29 @@ def categories_menu_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def categories_edit_keyboard(categories: list[Category], cat_type: str) -> InlineKeyboardMarkup:
-    """Список категорий (нажатие = удалить) + добавить + назад."""
+def categories_view_keyboard(categories: list[Category], cat_type: str) -> InlineKeyboardMarkup:
+    """Просмотр списка (категории не кликабельны) + Добавить / Удалить / Назад."""
+    builder = InlineKeyboardBuilder()
+    # Категории показываем как «неактивные» кнопки (нажатие ничего не делает)
+    for cat in categories:
+        builder.button(text=f"{cat.icon} {cat.name}", callback_data="noop")
+    builder.adjust(1)
+    row = []
+    builder.row(
+        InlineKeyboardButton(text="➕ Добавить", callback_data=f"cat_add:{cat_type}"),
+    )
+    if categories:
+        builder.row(
+            InlineKeyboardButton(text="➖ Удалить", callback_data=f"cats_del_menu:{cat_type}"),
+        )
+    builder.row(
+        InlineKeyboardButton(text="◀️ Назад", callback_data="categories"),
+    )
+    return builder.as_markup()
+
+
+def categories_delete_keyboard(categories: list[Category], cat_type: str) -> InlineKeyboardMarkup:
+    """Режим удаления: каждая категория = кнопка удаления."""
     builder = InlineKeyboardBuilder()
     for cat in categories:
         builder.button(
@@ -106,9 +127,6 @@ def categories_edit_keyboard(categories: list[Category], cat_type: str) -> Inlin
         )
     builder.adjust(1)
     builder.row(
-        InlineKeyboardButton(text="➕ Добавить", callback_data=f"cat_add:{cat_type}")
-    )
-    builder.row(
-        InlineKeyboardButton(text="◀️ Назад", callback_data="categories")
+        InlineKeyboardButton(text="◀️ Назад", callback_data=f"cats_list:{cat_type}"),
     )
     return builder.as_markup()
