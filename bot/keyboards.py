@@ -4,31 +4,28 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot.models import Category
 
 
-def operation_type_keyboard() -> InlineKeyboardMarkup:
-    """Выбор типа операции: расход или доход."""
-    builder = InlineKeyboardBuilder()
-    builder.button(text="💸 Расход", callback_data="type:expense")
-    builder.button(text="💰 Доход", callback_data="type:income")
-    builder.button(text="❌ Отмена", callback_data="cancel_add")
-    builder.adjust(2, 1)
-    return builder.as_markup()
-
-
 def categories_keyboard(categories: list[Category]) -> InlineKeyboardMarkup:
-    """Клавиатура выбора категории: 2 кнопки в ряд + назад и отмена снизу."""
+    """Клавиатура выбора категории расхода: 2 в ряд + отмена."""
     builder = InlineKeyboardBuilder()
     for cat in categories:
         builder.button(text=f"{cat.icon} {cat.name}", callback_data=f"cat:{cat.id}")
     builder.adjust(2)
-    builder.row(
-        InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_type"),
-        InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_add"),
-    )
+    builder.row(InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_add"))
+    return builder.as_markup()
+
+
+def income_categories_keyboard(categories: list[Category]) -> InlineKeyboardMarkup:
+    """Клавиатура выбора категории дохода."""
+    builder = InlineKeyboardBuilder()
+    for cat in categories:
+        builder.button(text=f"{cat.icon} {cat.name}", callback_data=f"inccat:{cat.id}")
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_add"))
     return builder.as_markup()
 
 
 def undo_keyboard(operation_id: int) -> InlineKeyboardMarkup:
-    """Кнопки под записанной операцией: отменить запись + вернуться в меню."""
+    """Кнопки под записанной операцией."""
     builder = InlineKeyboardBuilder()
     builder.button(text="↩️ Отменить запись", callback_data=f"undo:{operation_id}")
     builder.button(text="🏠 Меню", callback_data="menu")
@@ -37,12 +34,17 @@ def undo_keyboard(operation_id: int) -> InlineKeyboardMarkup:
 
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
-    """Главное меню бота."""
+    """Главное меню бота — полный набор, по 2 в ряд."""
     builder = InlineKeyboardBuilder()
     builder.button(text="📊 Статистика", callback_data="stats")
-    builder.button(text="📝 Последние операции", callback_data="recent")
+    builder.button(text="📝 Последние", callback_data="recent")
+    builder.button(text="💰 Доход", callback_data="add_income")
     builder.button(text="🔔 Лимиты", callback_data="limits")
-    builder.adjust(1)
+    builder.button(text="📤 Экспорт", callback_data="export")
+    builder.button(text="🔍 Поиск", callback_data="search")
+    builder.button(text="👨‍👩‍👧 Семья", callback_data="family")
+    builder.button(text="🧾 Splitwise", callback_data="splitwise")
+    builder.adjust(2)
     return builder.as_markup()
 
 
