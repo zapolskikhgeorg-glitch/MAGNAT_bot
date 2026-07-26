@@ -136,5 +136,7 @@ async def handle_undo(callback: CallbackQuery) -> None:
             await session.delete(operation)
             await session.commit()
 
-    await callback.message.edit_text("↩️ Запись отменена.")
+    await callback.message.edit_text(
+        "↩️ Запись отменена.", reply_markup=back_to_menu_keyboard()
+    )
     await callback.answer()
