@@ -23,6 +23,19 @@ def format_money(value) -> str:
     return f"{int(round(value)):,}".replace(",", " ") + " ₽"
 
 
+async def get_scope_user_ids(session, user: User) -> list[int]:
+    """
+    Возвращает список id пользователей, чьи операции учитываются в статистике.
+    Если пользователь в семье — все участники семьи, иначе — только он сам.
+    """
+    if user.family_id is None:
+        return [user.id]
+    result = await session.execute(
+        select(User.id).where(User.family_id == user.family_id)
+    )
+    return [row[0] for row in result.all()]
+
+
 @router.message(Command("menu"))
 async def cmd_menu(message: Message, state: FSMContext) -> None:
     await state.clear()
@@ -74,10 +87,13 @@ async def show_stats(callback: CallbackQuery) -> None:
             await callback.answer()
             return
 
+        user_ids = await get_scope_user_ids(session, user)
+        is_family = user.family_id is not None
+
         totals_result = await session.execute(
             select(Operation.type, func.sum(Operation.amount))
             .where(
-                Operation.user_id == user.id,
+                Operation.user_id.in_(user_ids),
                 Operation.operation_date >= date_from,
                 Operation.operation_date <= today,
             )
@@ -89,7 +105,7 @@ async def show_stats(callback: CallbackQuery) -> None:
             select(Category.icon, Category.name, func.sum(Operation.amount))
             .join(Operation, Operation.category_id == Category.id)
             .where(
-                Operation.user_id == user.id,
+                Operation.user_id.in_(user_ids),
                 Operation.type == "expense",
                 Operation.operation_date >= date_from,
                 Operation.operation_date <= today,
@@ -103,7 +119,7 @@ async def show_stats(callback: CallbackQuery) -> None:
             select(Category.icon, Category.name, func.sum(Operation.amount))
             .join(Operation, Operation.category_id == Category.id)
             .where(
-                Operation.user_id == user.id,
+                Operation.user_id.in_(user_ids),
                 Operation.type == "income",
                 Operation.operation_date >= date_from,
                 Operation.operation_date <= today,
@@ -117,7 +133,10 @@ async def show_stats(callback: CallbackQuery) -> None:
     income = totals.get("income") or 0
     balance = income - expense
 
-    lines = [title, ""]
+    lines = [title]
+    if is_family:
+        lines.append("👨‍👩‍👧 Семейный бюджет")
+    lines.append("")
     lines.append(f"💸 Расходы: {format_money(expense)}")
     lines.append(f"💰 Доходы: {format_money(income)}")
     lines.append(f"⚖️ Баланс: {format_money(balance)}")
@@ -161,10 +180,12 @@ async def show_recent(callback: CallbackQuery) -> None:
             await callback.answer()
             return
 
+        user_ids = await get_scope_user_ids(session, user)
+
         result = await session.execute(
             select(Operation, Category)
             .outerjoin(Category, Operation.category_id == Category.id)
-            .where(Operation.user_id == user.id)
+            .where(Operation.user_id.in_(user_ids))
             .order_by(Operation.created_at.desc())
             .limit(10)
         )
@@ -189,11 +210,6 @@ async def show_recent(callback: CallbackQuery) -> None:
 
 
 # ===== Заглушки (сделаем позже) =====
-
-
-@router.callback_query(F.data == "family")
-async def stub_family(callback: CallbackQuery) -> None:
-    await callback.answer("🚧 Семья скоро появится", show_alert=True)
 
 
 @router.callback_query(F.data == "splitwise")
