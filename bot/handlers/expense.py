@@ -7,7 +7,7 @@ from aiogram.types import Message, CallbackQuery
 from sqlalchemy import select
 
 from bot.database import get_session
-from bot.keyboards import categories_keyboard, undo_keyboard
+from bot.keyboards import categories_keyboard, undo_keyboard, back_to_menu_keyboard
 from bot.models import Category, Operation
 from bot.states import AddOperation
 from bot.utils import get_or_create_user
