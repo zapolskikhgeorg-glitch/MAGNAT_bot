@@ -9,7 +9,6 @@ class Base(DeclarativeBase):
 
 class User(Base):
     __tablename__ = "users"
-
     id: Mapped[int] = mapped_column(primary_key=True)
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
     first_name: Mapped[str] = mapped_column(String(255), default="")
@@ -18,7 +17,6 @@ class User(Base):
 
 class Category(Base):
     __tablename__ = "categories"
-
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
     icon: Mapped[str] = mapped_column(String(10), default="")
@@ -29,7 +27,6 @@ class Category(Base):
 
 class Operation(Base):
     __tablename__ = "operations"
-
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     type: Mapped[str] = mapped_column(String(10))  # "expense" или "income"
@@ -40,7 +37,16 @@ class Operation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
-# Базовые категории — создаются один раз при первом запуске бота.
+class CategoryLimit(Base):
+    __tablename__ = "category_limits"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"))
+    limit_amount: Mapped[float] = mapped_column(Numeric(12, 2))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# Базовые категории — создаются/досоздаются при запуске бота.
 DEFAULT_EXPENSE_CATEGORIES = [
     ("Продукты", "🛒"),
     ("Жильё", "🏠"),
@@ -54,11 +60,11 @@ DEFAULT_EXPENSE_CATEGORIES = [
     ("Образование", "🎓"),
     ("Другое", "📦"),
 ]
-
 DEFAULT_INCOME_CATEGORIES = [
     ("Зарплата", "💼"),
     ("Фриланс", "💻"),
     ("Подработка", "🤝"),
+    ("Инвестиции", "📈"),
     ("Подарки/Бонусы", "🎁"),
     ("Другое", "💰"),
 ]
