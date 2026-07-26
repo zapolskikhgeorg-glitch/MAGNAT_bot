@@ -35,7 +35,7 @@ async def main() -> None:
     dp.include_router(start.router)
     dp.include_router(search.router)
     dp.include_router(export.router)
-    dp.include_router(family.router)
+   # dp.include_router(family.router)
     dp.include_router(menu.router)
     dp.include_router(expense.router)
     dp.include_router(limits.router)
