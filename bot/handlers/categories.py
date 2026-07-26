@@ -6,7 +6,8 @@ from sqlalchemy import select, update
 from bot.database import get_session
 from bot.keyboards import (
     categories_menu_keyboard,
-    categories_edit_keyboard,
+    categories_view_keyboard,
+    categories_delete_keyboard,
     back_to_menu_keyboard,
 )
 from bot.models import Category, Operation
@@ -15,6 +16,22 @@ from bot.states import AddCategory
 router = Router()
 
 TYPE_LABEL = {"expense": "💸 Расходные", "income": "💰 Доходные"}
+
+
+async def _load(cat_type: str) -> list[Category]:
+    async with get_session() as session:
+        result = await session.execute(
+            select(Category)
+            .where(Category.type == cat_type)
+            .order_by(Category.id)
+        )
+        return list(result.scalars().all())
+
+
+@router.callback_query(F.data == "noop")
+async def noop(callback: CallbackQuery) -> None:
+    """Нажатие на категорию в режиме просмотра — ничего не делаем."""
+    await callback.answer()
 
 
 @router.callback_query(F.data == "categories")
@@ -27,23 +44,20 @@ async def categories_root(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
-async def _show_list(callback: CallbackQuery, cat_type: str) -> None:
-    async with get_session() as session:
-        result = await session.execute(
-            select(Category)
-            .where(Category.type == cat_type)
-            .order_by(Category.id)
-        )
-        categories = list(result.scalars().all())
-
+async def _show_view(callback: CallbackQuery, cat_type: str) -> None:
+    categories = await _load(cat_type)
     label = TYPE_LABEL[cat_type]
     if categories:
-        text = f"{label} категории\n\nНажми на категорию, чтобы удалить её."
+        text = (
+            f"{label} категории\n\n"
+            f"Ниже — твои категории.\n"
+            f"➕ Добавить — создать новую\n"
+            f"➖ Удалить — убрать существующую"
+        )
     else:
         text = f"{label} категории\n\nПока нет ни одной. Добавь первую!"
-
     await callback.message.edit_text(
-        text, reply_markup=categories_edit_keyboard(categories, cat_type)
+        text, reply_markup=categories_view_keyboard(categories, cat_type)
     )
 
 
@@ -51,7 +65,20 @@ async def _show_list(callback: CallbackQuery, cat_type: str) -> None:
 async def show_categories(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     cat_type = callback.data.split(":")[1]
-    await _show_list(callback, cat_type)
+    await _show_view(callback, cat_type)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("cats_del_menu:"))
+async def delete_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    cat_type = callback.data.split(":")[1]
+    categories = await _load(cat_type)
+    label = TYPE_LABEL[cat_type]
+    await callback.message.edit_text(
+        f"{label} — удаление\n\nНажми на категорию, чтобы удалить её.",
+        reply_markup=categories_delete_keyboard(categories, cat_type),
+    )
     await callback.answer()
 
 
@@ -66,7 +93,7 @@ async def delete_category(callback: CallbackQuery) -> None:
             return
         cat_type = category.type
 
-        # У операций с этой категорией обнуляем ссылку — операции сохраняются.
+        # Операции с этой категорией сохраняем — просто обнуляем ссылку.
         await session.execute(
             update(Operation)
             .where(Operation.category_id == category_id)
@@ -75,7 +102,19 @@ async def delete_category(callback: CallbackQuery) -> None:
         await session.delete(category)
         await session.commit()
 
-    await _show_list(callback, cat_type)
+    # Остаёмся в режиме удаления с обновлённым списком.
+    categories = await _load(cat_type)
+    label = TYPE_LABEL[cat_type]
+    if categories:
+        await callback.message.edit_text(
+            f"{label} — удаление\n\nНажми на категорию, чтобы удалить её.",
+            reply_markup=categories_delete_keyboard(categories, cat_type),
+        )
+    else:
+        await callback.message.edit_text(
+            f"{label} категории\n\nВсе категории удалены. Добавь новую!",
+            reply_markup=categories_view_keyboard([], cat_type),
+        )
     await callback.answer("Категория удалена")
 
 
@@ -109,7 +148,6 @@ async def add_category_save(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     cat_type = data["new_cat_type"]
 
-    # Отделяем эмодзи от названия: если первый символ не буква/цифра — считаем иконкой.
     parts = raw.split(maxsplit=1)
     if len(parts) == 2 and not parts[0][0].isalnum():
         icon = parts[0]
@@ -124,17 +162,11 @@ async def add_category_save(message: Message, state: FSMContext) -> None:
         )
         await session.commit()
 
-        result = await session.execute(
-            select(Category)
-            .where(Category.type == cat_type)
-            .order_by(Category.id)
-        )
-        categories = list(result.scalars().all())
-
+    categories = await _load(cat_type)
     await state.clear()
 
     label = TYPE_LABEL[cat_type]
     await message.answer(
         f"✅ Категория добавлена!\n\n{label} категории:",
-        reply_markup=categories_edit_keyboard(categories, cat_type),
+        reply_markup=categories_view_keyboard(categories, cat_type),
     )
