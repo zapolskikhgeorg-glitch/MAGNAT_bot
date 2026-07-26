@@ -16,12 +16,12 @@ from bot.models import Category, Operation, User
 
 router = Router()
 
-MENU_TEXT = "🏠 Главное меню\n\nВыбери действие или просто напиши сумму, чтобы записать операцию."
+MENU_TEXT = "🏠 Главное меню\n\nВыбери действие или просто напиши сумму, чтобы записать расход."
 
 
 def format_money(value) -> str:
-    """Красиво форматирует сумму: 12345.5 -> 12 345,50 ₽"""
-    return f"{value:,.2f}".replace(",", " ").replace(".", ",") + " ₽"
+    """Форматирует сумму без копеек: 12345 -> 12 345 ₽"""
+    return f"{int(round(value)):,}".replace(",", " ") + " ₽"
 
 
 @router.message(Command("menu"))
@@ -100,6 +100,20 @@ async def show_stats(callback: CallbackQuery) -> None:
         )
         by_category = by_category_result.all()
 
+        income_cat_result = await session.execute(
+            select(Category.icon, Category.name, func.sum(Operation.amount))
+            .join(Operation, Operation.category_id == Category.id)
+            .where(
+                Operation.user_id == user.id,
+                Operation.type == "income",
+                Operation.operation_date >= date_from,
+                Operation.operation_date <= today,
+            )
+            .group_by(Category.icon, Category.name)
+            .order_by(func.sum(Operation.amount).desc())
+        )
+        by_income = income_cat_result.all()
+
     expense = totals.get("expense") or 0
     income = totals.get("income") or 0
     balance = income - expense
@@ -115,7 +129,14 @@ async def show_stats(callback: CallbackQuery) -> None:
         for icon, name, amount in by_category:
             share = (amount / expense * 100) if expense else 0
             lines.append(f"{icon} {name}: {format_money(amount)} ({share:.0f}%)")
-    elif not expense and not income:
+
+    if by_income:
+        lines.append("")
+        lines.append("📥 Доходы по категориям:")
+        for icon, name, amount in by_income:
+            lines.append(f"{icon} {name}: {format_money(amount)}")
+
+    if not expense and not income:
         lines.append("")
         lines.append("За этот период операций пока нет.")
 
@@ -155,14 +176,4 @@ async def show_recent(callback: CallbackQuery) -> None:
     else:
         lines = ["📝 Последние операции:", ""]
         for operation, category in rows:
-            sign = "−" if operation.type == "expense" else "+"
-            cat_label = f"{category.icon} {category.name}" if category else "без категории"
-            day = operation.operation_date.strftime("%d.%m")
-            line = f"{day}  {sign}{format_money(operation.amount)}  {cat_label}"
-            if operation.raw_text:
-                line += f" — {operation.raw_text}"
-            lines.append(line)
-        text = "\n".join(lines)
-
-    await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard())
-    await callback.answer()
+            sign
