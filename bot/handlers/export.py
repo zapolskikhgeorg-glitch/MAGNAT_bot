@@ -5,6 +5,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, BufferedInputFile
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 from sqlalchemy import select
 
 from bot.database import get_session
@@ -50,53 +51,78 @@ async def export_data(callback: CallbackQuery) -> None:
         )
         return
 
-    # Создаём Excel-книгу.
     workbook = Workbook()
+
+    # ===== ЛИСТ 1: ОПЕРАЦИИ (с фильтром) =====
     sheet = workbook.active
     sheet.title = "Операции"
 
     headers = ["Дата", "Тип", "Сумма (₽)", "Категория", "Описание"]
     sheet.append(headers)
 
-    # Стиль шапки.
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill("solid", fgColor="4CAF50")
     for cell in sheet[1]:
         cell.font = header_font
         cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
 
     total_expense = 0.0
     total_income = 0.0
 
     for operation, category in rows:
-        # amount приходит как Decimal -> приводим к float.
         amount = float(operation.amount)
         cat_label = f"{category.icon} {category.name}" if category else "—"
-        sheet.append([
-            operation.operation_date.strftime("%d.%m.%Y"),
+
+        row = [
+            operation.operation_date,          # настоящая дата -> фильтр по датам работает
             TYPE_LABEL.get(operation.type, operation.type),
             round(amount, 2),
             cat_label,
             operation.raw_text or "",
-        ])
+        ]
+        sheet.append(row)
+
         if operation.type == "expense":
             total_expense += amount
         else:
             total_income += amount
 
-    # Пустая строка + итоги.
-    sheet.append([])
-    sheet.append(["", "Итого расходов", round(total_expense, 2)])
-    sheet.append(["", "Итого доходов", round(total_income, 2)])
-    sheet.append(["", "Баланс", round(total_income - total_expense, 2)])
+    last_row = sheet.max_row
+    last_col_letter = get_column_letter(len(headers))
+
+    # Формат даты для первого столбца.
+    for r in range(2, last_row + 1):
+        sheet.cell(row=r, column=1).number_format = "DD.MM.YYYY"
+
+    # 🔽 Автофильтр на всю таблицу (шапка + данные).
+    sheet.auto_filter.ref = f"A1:{last_col_letter}{last_row}"
+
+    # 📌 Закрепляем шапку.
+    sheet.freeze_panes = "A2"
 
     # Ширина колонок.
-    widths = [14, 10, 14, 22, 40]
+    widths = [14, 10, 14, 24, 40]
     for i, width in enumerate(widths, start=1):
-        sheet.column_dimensions[chr(64 + i)].width = width
+        sheet.column_dimensions[get_column_letter(i)].width = width
 
-    # Сохраняем в память и отправляем.
+    # ===== ЛИСТ 2: ИТОГИ =====
+    summary = workbook.create_sheet("Итоги")
+    summary.append(["Показатель", "Значение (₽)"])
+    for cell in summary[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    summary.append(["Всего операций", len(rows)])
+    summary.append(["Итого расходов", round(total_expense, 2)])
+    summary.append(["Итого доходов", round(total_income, 2)])
+    summary.append(["Баланс", round(total_income - total_expense, 2)])
+
+    summary.column_dimensions["A"].width = 22
+    summary.column_dimensions["B"].width = 16
+
+    # ===== СОХРАНЯЕМ И ОТПРАВЛЯЕМ =====
     buffer = io.BytesIO()
     workbook.save(buffer)
     buffer.seek(0)
@@ -107,7 +133,10 @@ async def export_data(callback: CallbackQuery) -> None:
     caption = (
         f"📤 Готово! Всего операций: {len(rows)}\n\n"
         f"💸 Расходы: {int(round(total_expense)):,} ₽\n".replace(",", " ")
-        + f"💰 Доходы: {int(round(total_income)):,} ₽".replace(",", " ")
+        + f"💰 Доходы: {int(round(total_income)):,} ₽\n".replace(",", " ")
+        + f"⚖️ Баланс: {int(round(total_income - total_expense)):,} ₽".replace(",", " ")
+        + "\n\n🔽 В шапке — стрелки для фильтра по типу, категории и дате.\n"
+        + "📊 Итоги — на втором листе «Итоги»."
     )
 
     await callback.message.answer_document(
