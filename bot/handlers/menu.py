@@ -20,7 +20,6 @@ MENU_TEXT = "🏠 Главное меню\n\nВыбери действие ил�
 
 
 def format_money(value) -> str:
-    """Форматирует сумму без копеек: 12345 -> 12 345 ₽"""
     return f"{int(round(value)):,}".replace(",", " ") + " ₽"
 
 
@@ -185,13 +184,11 @@ async def show_recent(callback: CallbackQuery) -> None:
             lines.append(line)
         text = "\n".join(lines)
 
-    await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard())
+    await callback.message.edit_text(text, reply_markup=stats_period_keyboard())
     await callback.answer()
 
 
-# =========================================================
-#  ЗАГЛУШКИ — подключим в заходах 2 и 3
-# =========================================================
+# ===== Заглушки (сделаем позже) =====
 @router.callback_query(F.data == "export")
 async def stub_export(callback: CallbackQuery) -> None:
     await callback.answer("🚧 Экспорт скоро появится", show_alert=True)
