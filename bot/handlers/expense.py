@@ -124,6 +124,15 @@ async def handle_cancel_add(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.message.edit_text("Добавление отменено.")
     await callback.answer()
 
-
 @router.callback_query(F.data.startswith("undo:"))
-async def
+async def handle_undo(callback: CallbackQuery) -> None:
+    operation_id = int(callback.data.split(":")[1])
+
+    async with get_session() as session:
+        operation = await session.get(Operation, operation_id)
+        if operation is not None:
+            await session.delete(operation)
+            await session.commit()
+
+    await callback.message.edit_text("↩️ Запись отменена.")
+    await callback.answer()
