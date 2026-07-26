@@ -189,9 +189,6 @@ async def show_recent(callback: CallbackQuery) -> None:
 
 
 # ===== Заглушки (сделаем позже) =====
-@router.callback_query(F.data == "export")
-async def stub_export(callback: CallbackQuery) -> None:
-    await callback.answer("🚧 Экспорт скоро появится", show_alert=True)
 
 
 @router.callback_query(F.data == "family")
