@@ -61,6 +61,43 @@ class CategoryLimit(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class Trip(Base):
+    __tablename__ = "trips"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    name: Mapped[str] = mapped_column(String(100))
+    invite_code: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TripMember(Base):
+    __tablename__ = "trip_members"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    trip_id: Mapped[int] = mapped_column(ForeignKey("trips.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+class TripExpense(Base):
+    __tablename__ = "trip_expenses"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    trip_id: Mapped[int] = mapped_column(ForeignKey("trips.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    amount: Mapped[float] = mapped_column(Numeric(12, 2))
+    description: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TripPayment(Base):
+    __tablename__ = "trip_payments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    trip_id: Mapped[int] = mapped_column(ForeignKey("trips.id"))
+    from_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    to_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    amount: Mapped[float] = mapped_column(Numeric(12, 2))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 # Базовые категории — создаются/досоздаются при запуске бота.
 DEFAULT_EXPENSE_CATEGORIES = [
     ("Продукты", "🛒"),
