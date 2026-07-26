@@ -1,10 +1,8 @@
 import asyncio
 import logging
-
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand
-
 from bot.config import BOT_TOKEN
 from bot.database import init_db
 from bot.handlers import (
@@ -15,7 +13,7 @@ from bot.handlers import (
     categories,
     search,
     export,
-    # family,
+    family,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -39,7 +37,7 @@ async def main() -> None:
     dp.include_router(categories.router)
     dp.include_router(search.router)
     dp.include_router(export.router)
-    # dp.include_router(family.router)
+    dp.include_router(family.router)
     await set_commands(bot)
     logging.info("Бот запущен")
     await dp.start_polling(bot)
