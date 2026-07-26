@@ -8,3 +8,7 @@ class AddOperation(StatesGroup):
 class AddIncome(StatesGroup):
     waiting_amount = State()     # ввод суммы дохода
     waiting_category = State()   # выбор категории дохода
+
+
+class AddLimit(StatesGroup):
+    waiting_amount = State()     # ввод суммы лимита
