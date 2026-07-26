@@ -15,7 +15,7 @@ from bot.handlers import (
     categories,
     search,
     export,
-    family,
+    # family,
 )
 
 logging.basicConfig(level=logging.INFO)
