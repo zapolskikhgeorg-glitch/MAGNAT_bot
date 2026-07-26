@@ -102,6 +102,23 @@ async def show_stats(callback: CallbackQuery) -> None:
         )
         totals = dict(totals_result.all())
 
+        # Разбивка расходов по участникам (только для семьи)
+        by_person = []
+        if is_family:
+            person_result = await session.execute(
+                select(User.first_name, func.sum(Operation.amount))
+                .join(Operation, Operation.user_id == User.id)
+                .where(
+                    Operation.user_id.in_(user_ids),
+                    Operation.type == "expense",
+                    Operation.operation_date >= date_from,
+                    Operation.operation_date <= today,
+                )
+                .group_by(User.id, User.first_name)
+                .order_by(func.sum(Operation.amount).desc())
+            )
+            by_person = person_result.all()
+
         by_category_result = await session.execute(
             select(Category.icon, Category.name, func.sum(Operation.amount))
             .join(Operation, Operation.category_id == Category.id)
@@ -138,6 +155,13 @@ async def show_stats(callback: CallbackQuery) -> None:
     if is_family:
         lines.append("👨‍👩‍👧 Семейный бюджет")
     lines.append("")
+
+    if is_family and by_person:
+        lines.append("👤 Расходы по участникам:")
+        for name, amount in by_person:
+            lines.append(f"• {name or 'Участник'}: {format_money(amount)}")
+        lines.append("")
+
     lines.append(f"💸 Расходы: {format_money(expense)}")
     lines.append(f"💰 Доходы: {format_money(income)}")
     lines.append(f"⚖️ Баланс: {format_money(balance)}")
