@@ -4,7 +4,8 @@ from datetime import date, timedelta
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select, func
 
 from bot.database import get_session
@@ -35,6 +36,22 @@ async def get_scope_user_ids(session, user: User) -> list[int]:
         select(User.id).where(User.family_id == user.family_id)
     )
     return [row[0] for row in result.all()]
+
+
+def recent_keyboard(rows) -> "InlineKeyboardBuilder":
+    """Список операций: каждая строка — кнопка (тап = удалить с подтверждением)."""
+    b = InlineKeyboardBuilder()
+    for operation, category in rows:
+        sign = "−" if operation.type == "expense" else "+"
+        cat = f"{category.icon} {category.name}" if category else "без категории"
+        day = operation.operation_date.strftime("%d.%m")
+        label = f"{day} {sign}{format_money(operation.amount)} · {cat}"
+        if operation.raw_text:
+            label += f" · {operation.raw_text}"
+        b.button(text=label[:64], callback_data=f"op_del:{operation.id}")
+    b.button(text="🏠 Меню", callback_data="menu")
+    b.adjust(1)
+    return b.as_markup()
 
 
 @router.message(Command("menu"))
@@ -102,7 +119,6 @@ async def show_stats(callback: CallbackQuery) -> None:
         )
         totals = dict(totals_result.all())
 
-        # Разбивка расходов по участникам (только для семьи)
         by_person = []
         if is_family:
             person_result = await session.execute(
@@ -189,8 +205,8 @@ async def show_stats(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-@router.callback_query(F.data == "recent")
-async def show_recent(callback: CallbackQuery) -> None:
+async def _render_recent(callback: CallbackQuery) -> None:
+    """Показать последние операции списком-кнопками (без периодов)."""
     async with get_session() as session:
         user_result = await session.execute(
             select(User).where(User.telegram_id == callback.from_user.id)
@@ -202,34 +218,74 @@ async def show_recent(callback: CallbackQuery) -> None:
                 "Пока нет ни одной операции. Напиши сумму, чтобы начать!",
                 reply_markup=back_to_menu_keyboard(),
             )
-            await callback.answer()
             return
 
         user_ids = await get_scope_user_ids(session, user)
-
         result = await session.execute(
             select(Operation, Category)
             .outerjoin(Category, Operation.category_id == Category.id)
             .where(Operation.user_id.in_(user_ids))
             .order_by(Operation.created_at.desc())
-            .limit(10)
+            .limit(15)
         )
         rows = result.all()
 
     if not rows:
-        text = "Пока нет ни одной операции. Напиши сумму, чтобы начать!"
-    else:
-        lines = ["📝 Последние операции:", ""]
-        for operation, category in rows:
-            sign = "−" if operation.type == "expense" else "+"
-            cat_label = f"{category.icon} {category.name}" if category else "без категории"
-            day = operation.operation_date.strftime("%d.%m")
-            line = f"{day}  {sign}{format_money(operation.amount)}  {cat_label}"
-            if operation.raw_text:
-                line += f" — {operation.raw_text}"
-            lines.append(line)
-        text = "\n".join(lines)
+        await callback.message.edit_text(
+            "Пока нет ни одной операции. Напиши сумму, чтобы начать!",
+            reply_markup=back_to_menu_keyboard(),
+        )
+        return
 
-    await callback.message.edit_text(text, reply_markup=stats_period_keyboard())
+    text = "📝 Последние операции\n\nНажми на запись, чтобы удалить её."
+    await callback.message.edit_text(text, reply_markup=recent_keyboard(rows))
+
+
+@router.callback_query(F.data == "recent")
+async def show_recent(callback: CallbackQuery) -> None:
+    await _render_recent(callback)
     await callback.answer()
 
+
+@router.callback_query(F.data.startswith("op_del:"))
+async def op_del_confirm(callback: CallbackQuery) -> None:
+    op_id = int(callback.data.split(":")[1])
+    async with get_session() as session:
+        operation = await session.get(Operation, op_id)
+        if operation is None:
+            await callback.answer("Запись уже удалена", show_alert=True)
+            await _render_recent(callback)
+            return
+        category = (
+            await session.get(Category, operation.category_id)
+            if operation.category_id else None
+        )
+        sign = "−" if operation.type == "expense" else "+"
+        cat = f"{category.icon} {category.name}" if category else "без категории"
+        day = operation.operation_date.strftime("%d.%m")
+        info = f"{day}  {sign}{format_money(operation.amount)}  {cat}"
+        if operation.raw_text:
+            info += f" — {operation.raw_text}"
+
+    b = InlineKeyboardBuilder()
+    b.button(text="🗑 Да, удалить", callback_data=f"op_delok:{op_id}")
+    b.button(text="◀️ Отмена", callback_data="recent")
+    b.adjust(1)
+    await callback.message.edit_text(
+        f"🗑 Удалить эту запись?\n\n{info}\n\n"
+        "Она исчезнет из списка и вычтется из статистики.",
+        reply_markup=b.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("op_delok:"))
+async def op_del_do(callback: CallbackQuery) -> None:
+    op_id = int(callback.data.split(":")[1])
+    async with get_session() as session:
+        operation = await session.get(Operation, op_id)
+        if operation is not None:
+            await session.delete(operation)
+            await session.commit()
+    await _render_recent(callback)
+    await callback.answer("Запись удалена")
