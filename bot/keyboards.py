@@ -130,3 +130,43 @@ def categories_delete_keyboard(categories: list[Category], cat_type: str) -> Inl
         InlineKeyboardButton(text="◀️ Назад", callback_data=f"cats_list:{cat_type}"),
     )
     return builder.as_markup()
+
+
+# ===== Семейный бюджет =====
+
+def family_menu_no_family_keyboard() -> InlineKeyboardMarkup:
+    """Экран семьи, когда пользователь ещё не в семье."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="➕ Создать семейный бюджет", callback_data="family_create")
+    builder.button(text="🏠 Меню", callback_data="menu")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def family_menu_keyboard() -> InlineKeyboardMarkup:
+    """Экран семьи, когда пользователь уже состоит в семье."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="👥 Участники", callback_data="family_members")
+    builder.button(text="➕ Пригласить участника", callback_data="family_invite")
+    builder.button(text="🚪 Выйти из семьи", callback_data="family_leave")
+    builder.button(text="🏠 Меню", callback_data="menu")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def family_invite_accept_keyboard(code: str) -> InlineKeyboardMarkup:
+    """Кнопки при переходе по ссылке-приглашению."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Принять приглашение", callback_data=f"family_accept:{code}")
+    builder.button(text="❌ Отклонить", callback_data="family_decline")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def family_leave_confirm_keyboard() -> InlineKeyboardMarkup:
+    """Подтверждение выхода из семьи."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🚪 Да, выйти", callback_data="family_leave_confirm")
+    builder.button(text="◀️ Назад", callback_data="family")
+    builder.adjust(1)
+    return builder.as_markup()
