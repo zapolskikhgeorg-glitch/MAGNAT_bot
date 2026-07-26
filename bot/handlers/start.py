@@ -11,14 +11,14 @@ from bot.models import User
 router = Router()
 
 WELCOME_TEXT = (
-    "👋 Привет! Я помогу отслеживать доходы и расходы.\n\n"
-    "Просто отправь сумму и (по желанию) описание:\n"
+    "👋 Привет! Я помогу вести учёт расходов и доходов.\n\n"
+    "💸 <b>Расход</b> — просто напиши сумму и (по желанию) описание:\n"
     "• 450\n"
     "• 1200 продукты в Пятёрочке\n"
-    "• 350,50 кофе\n"
-    "• 50000 зарплата\n\n"
-    "Я сам пойму, доход это или расход, и предложу категорию.\n\n"
-    "Или воспользуйся меню:"
+    "• 350 кофе\n"
+    "После суммы выберешь категорию.\n\n"
+    "💰 <b>Доход</b> — жми кнопку «Доход» в меню.\n\n"
+    "Копейки округляю до целого рубля. Пользуйся меню:"
 )
 
 
@@ -38,4 +38,6 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
             session.add(user)
             await session.commit()
 
-    await message.answer(WELCOME_TEXT, reply_markup=main_menu_keyboard())
+    await message.answer(
+        WELCOME_TEXT, reply_markup=main_menu_keyboard(), parse_mode="HTML"
+    )
