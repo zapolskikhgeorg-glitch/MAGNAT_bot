@@ -1,6 +1,8 @@
+from urllib.parse import quote
+
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.deep_linking import create_start_link
 from sqlalchemy import select
 
@@ -15,6 +17,8 @@ from bot.models import User, Family, generate_invite_code
 
 router = Router()
 
+MAX_MEMBERS = 2
+
 
 async def get_or_create_user(session, tg_user) -> User:
     result = await session.execute(
@@ -28,24 +32,29 @@ async def get_or_create_user(session, tg_user) -> User:
     return user
 
 
+async def _members(session, family_id: int):
+    result = await session.execute(
+        select(User).where(User.family_id == family_id)
+    )
+    return result.scalars().all()
+
+
 async def render_family_menu(session, user: User):
     """Возвращает (текст, клавиатура) главного экрана семьи."""
     if user.family_id is None:
         text = (
             "👨‍👩‍👧 Семейный бюджет\n\n"
-            "Объедини расходы и доходы с близкими — вся статистика станет общей.\n\n"
-            "Создай семейный бюджет и пригласи участников по ссылке."
+            "Объедини расходы и доходы с близким человеком — вся статистика станет общей, "
+            "и будет видно, кто сколько потратил.\n\n"
+            "Создай семейный бюджет и пригласи участника (до 2 человек)."
         )
         return text, family_menu_no_family_keyboard()
 
     fam = await session.get(Family, user.family_id)
-    members_result = await session.execute(
-        select(User).where(User.family_id == user.family_id)
-    )
-    members = members_result.scalars().all()
+    members = await _members(session, user.family_id)
 
     lines = [f"👨‍👩‍👧 {fam.name}", ""]
-    lines.append(f"Участников: {len(members)}")
+    lines.append(f"Участников: {len(members)}/{MAX_MEMBERS}")
     for m in members:
         crown = " 👑" if m.id == fam.owner_id else ""
         lines.append(f"• {m.first_name or 'Без имени'}{crown}")
@@ -88,7 +97,7 @@ async def family_create(callback: CallbackQuery) -> None:
     await callback.message.edit_text(text, reply_markup=kb)
 
 
-# ===== Пригласить (ссылка) =====
+# ===== Пригласить (выбор контакта в Telegram) =====
 @router.callback_query(F.data == "family_invite")
 async def family_invite(callback: CallbackQuery) -> None:
     async with get_session() as session:
@@ -98,16 +107,32 @@ async def family_invite(callback: CallbackQuery) -> None:
             return
         fam = await session.get(Family, user.family_id)
         code = fam.invite_code
+        members = await _members(session, user.family_id)
         await session.commit()
 
+    if len(members) >= MAX_MEMBERS:
+        await callback.message.edit_text(
+            "👨‍👩‍👧 В семье уже 2 участника — больше добавить нельзя.",
+            reply_markup=family_menu_keyboard(),
+        )
+        await callback.answer()
+        return
+
     link = await create_start_link(callback.bot, f"inv_{code}", encode=False)
-    text = (
+    share_text = "Приглашаю тебя в наш семейный бюджет! Нажми на ссылку, чтобы присоединиться."
+    share_url = f"https://t.me/share/url?url={quote(link)}&text={quote(share_text)}"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👤 Выбрать, кому отправить", url=share_url)],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="family")],
+    ])
+
+    await callback.message.edit_text(
         "➕ Приглашение участника\n\n"
-        "Отправь эту ссылку тому, кого хочешь добавить в семейный бюджет:\n\n"
-        f"{link}\n\n"
-        "Он перейдёт по ссылке и подтвердит присоединение."
+        "Нажми кнопку ниже — откроется поиск по твоим контактам в Telegram. "
+        "Выбери человека, и приглашение уйдёт ему в личку.",
+        reply_markup=keyboard,
     )
-    await callback.message.edit_text(text, reply_markup=family_menu_keyboard())
     await callback.answer()
 
 
@@ -120,10 +145,7 @@ async def family_members(callback: CallbackQuery) -> None:
             await callback.answer("Ты не в семье", show_alert=True)
             return
         fam = await session.get(Family, user.family_id)
-        members_result = await session.execute(
-            select(User).where(User.family_id == user.family_id)
-        )
-        members = members_result.scalars().all()
+        members = await _members(session, user.family_id)
         await session.commit()
 
     lines = ["👥 Участники семьи", ""]
@@ -199,6 +221,26 @@ async def family_accept(callback: CallbackQuery) -> None:
             await callback.answer("Ты уже в этой семье", show_alert=True)
             return
 
+        if user.family_id is not None:
+            await session.commit()
+            await callback.message.edit_text(
+                "Ты уже состоишь в другой семье. Сначала выйди из неё "
+                "(Меню → Семья → Выйти), потом присоединяйся.",
+                reply_markup=back_to_menu_keyboard(),
+            )
+            await callback.answer()
+            return
+
+        members = await _members(session, fam.id)
+        if len(members) >= MAX_MEMBERS:
+            await session.commit()
+            await callback.message.edit_text(
+                "👨‍👩‍👧 В этой семье уже 2 участника — присоединиться нельзя.",
+                reply_markup=back_to_menu_keyboard(),
+            )
+            await callback.answer()
+            return
+
         user.family_id = fam.id
         owner = await session.get(User, fam.owner_id)
         owner_name = owner.first_name if owner and owner.first_name else ""
@@ -206,7 +248,7 @@ async def family_accept(callback: CallbackQuery) -> None:
 
     text = (
         f"✅ Ты присоединился к семейному бюджету {owner_name}!\n\n"
-        "Теперь ваши расходы учитываются вместе."
+        "Теперь ваши расходы и доходы учитываются вместе."
     )
     await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard())
     await callback.answer()
