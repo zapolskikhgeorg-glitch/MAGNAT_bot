@@ -7,7 +7,7 @@ from aiogram.types import BotCommand
 
 from bot.config import BOT_TOKEN
 from bot.database import init_db
-from bot.handlers import start, menu, expense
+from bot.handlers import start, menu, expense, limits
 
 logging.basicConfig(level=logging.INFO)
 
@@ -21,16 +21,13 @@ async def set_commands(bot: Bot) -> None:
 
 async def main() -> None:
     await init_db()
-
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher(storage=MemoryStorage())
-
     dp.include_router(start.router)
     dp.include_router(menu.router)
     dp.include_router(expense.router)
-
+    dp.include_router(limits.router)
     await set_commands(bot)
-
     logging.info("Бот запущен")
     await dp.start_polling(bot)
 
