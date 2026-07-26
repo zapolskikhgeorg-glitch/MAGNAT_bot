@@ -233,10 +233,3 @@ async def show_recent(callback: CallbackQuery) -> None:
     await callback.message.edit_text(text, reply_markup=stats_period_keyboard())
     await callback.answer()
 
-
-# ===== Заглушки (сделаем позже) =====
-
-
-@router.callback_query(F.data == "splitwise")
-async def stub_splitwise(callback: CallbackQuery) -> None:
-    await callback.answer("🚧 Splitwise скоро появится", show_alert=True)
