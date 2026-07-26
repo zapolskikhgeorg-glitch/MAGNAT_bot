@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime, date
 from sqlalchemy import String, BigInteger, Numeric, Date, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -12,7 +13,21 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
     first_name: Mapped[str] = mapped_column(String(255), default="")
+    family_id: Mapped[int | None] = mapped_column(ForeignKey("families.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Family(Base):
+    __tablename__ = "families"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), default="Семейный бюджет")
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    invite_code: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+def generate_invite_code() -> str:
+    return secrets.token_urlsafe(9)
 
 
 class Category(Base):
