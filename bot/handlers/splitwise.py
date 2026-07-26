@@ -22,6 +22,7 @@ AMOUNT_RE = re.compile(r"^\s*(\d+(?:[.,]\d{1,2})?)\s*(.*)$")
 
 
 class TripFSM(StatesGroup):
+    browsing = State()   # пользователь просто «внутри» раздела Splitwise
     name = State()
     expense = State()
     payment = State()
@@ -110,6 +111,16 @@ async def _is_member(session, trip_id: int, user_id: int) -> bool:
     return res.scalar_one_or_none() is not None
 
 
+async def _active_trips(session, user_id: int):
+    res = await session.execute(
+        select(Trip)
+        .join(TripMember, TripMember.trip_id == Trip.id)
+        .where(TripMember.user_id == user_id, Trip.is_archived == False)
+        .order_by(Trip.id)
+    )
+    return list(res.scalars().all())
+
+
 async def _home_view(session, user_id: int):
     res = await session.execute(
         select(Trip)
@@ -129,6 +140,8 @@ async def _home_view(session, user_id: int):
                 lines.append(f"• <s>{esc(t.name)}</s> ✅ закрыта")
             else:
                 lines.append(f"• {esc(t.name)}")
+        lines.append("")
+        lines.append("💡 Можешь просто написать сумму в чат — предложу записать её в поездку.")
 
     b = InlineKeyboardBuilder()
     for t in trips:
@@ -156,6 +169,9 @@ async def _trip_text(session, trip):
     lines.append(f"Участники ({len(members)}/{MAX_MEMBERS}): {names}")
     lines.append("")
     lines.append(f"Всего потрачено: {fmt(total)} ₽")
+    if not trip.is_archived:
+        lines.append("")
+        lines.append("💡 Напиши сумму в чат — запишу трату в эту поездку.")
     return "\n".join(lines)
 
 
@@ -244,6 +260,97 @@ async def sw_home(callback: CallbackQuery, state: FSMContext) -> None:
             session, callback.from_user.id, callback.from_user.first_name or ""
         )
         text, kb = await _home_view(session, user.id)
+    await state.set_state(TripFSM.browsing)
+    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
+# ── Быстрый ввод суммы внутри Splitwise ───────────────────────
+@router.message(TripFSM.browsing, F.text, ~F.text.startswith("/"))
+async def sw_quick_input(message: Message, state: FSMContext) -> None:
+    parsed = parse_amount(message.text)
+    async with get_session() as session:
+        user = await get_or_create_user(
+            session, message.from_user.id, message.from_user.first_name or ""
+        )
+        trips = await _active_trips(session, user.id)
+
+    if parsed is None:
+        await message.answer(
+            "Чтобы записать трату в поездку, напиши сумму, например: 1500 ужин.\n\n"
+            "А для личных расходов вернись в 🏠 Меню.",
+            reply_markup=menu_kb(),
+        )
+        return
+
+    amount, desc = parsed
+    if not trips:
+        await message.answer(
+            "У тебя нет активных поездок. Создай поездку в разделе Splitwise.",
+            reply_markup=menu_kb(),
+        )
+        return
+
+    await state.update_data(sw_amount=str(amount), sw_desc=desc)
+    b = InlineKeyboardBuilder()
+    for t in trips:
+        b.button(text=f"🧾 {t.name}", callback_data=f"sw_addto:{t.id}")
+    b.button(text="❌ Отмена", callback_data="sw_qcancel")
+    b.adjust(1)
+    d = f" — {esc(desc)}" if desc else ""
+    await message.answer(
+        f"В какую поездку записать трату {fmt(amount)} ₽{d}?",
+        reply_markup=b.as_markup(),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data.startswith("sw_addto:"))
+async def sw_addto(callback: CallbackQuery, state: FSMContext) -> None:
+    tid = int(callback.data.split(":")[1])
+    data = await state.get_data()
+    try:
+        amount = Decimal(data.get("sw_amount", "0"))
+    except Exception:
+        amount = Decimal("0")
+    desc = data.get("sw_desc", "")
+    if amount <= 0:
+        await callback.answer("Сумма потерялась — введи заново", show_alert=True)
+        return
+
+    async with get_session() as session:
+        user = await get_or_create_user(
+            session, callback.from_user.id, callback.from_user.first_name or ""
+        )
+        trip = await session.get(Trip, tid)
+        if trip is None or trip.is_archived or not await _is_member(session, tid, user.id):
+            await callback.answer("Поездка недоступна", show_alert=True)
+            return
+        session.add(
+            TripExpense(trip_id=tid, user_id=user.id, amount=amount, description=desc)
+        )
+        await session.commit()
+        text = await _trip_text(session, trip)
+        is_owner = trip.owner_id == user.id
+
+    await state.set_state(TripFSM.browsing)
+    await state.update_data(sw_amount=None, sw_desc=None)
+    await callback.message.edit_text(
+        "✅ Записано в поездку!\n\n" + text,
+        reply_markup=trip_kb(trip, is_owner),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "sw_qcancel")
+async def sw_qcancel(callback: CallbackQuery, state: FSMContext) -> None:
+    async with get_session() as session:
+        user = await get_or_create_user(
+            session, callback.from_user.id, callback.from_user.first_name or ""
+        )
+        text, kb = await _home_view(session, user.id)
+    await state.set_state(TripFSM.browsing)
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
@@ -274,7 +381,7 @@ async def spl_name(message: Message, state: FSMContext) -> None:
         await session.commit()
         text = await _trip_text(session, trip)
 
-    await state.clear()
+    await state.set_state(TripFSM.browsing)
     await message.answer(
         text + "\n\nТеперь пригласи участников кнопкой ниже 👇",
         reply_markup=trip_kb(trip, True),
@@ -285,7 +392,6 @@ async def spl_name(message: Message, state: FSMContext) -> None:
 # ── Открыть поездку ───────────────────────────────────────────
 @router.callback_query(F.data.startswith("trip_open:"))
 async def trip_open(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.clear()
     tid = int(callback.data.split(":")[1])
     async with get_session() as session:
         user = await get_or_create_user(
@@ -297,6 +403,7 @@ async def trip_open(callback: CallbackQuery, state: FSMContext) -> None:
             return
         text = await _trip_text(session, trip)
         is_owner = trip.owner_id == user.id
+    await state.set_state(TripFSM.browsing)
     await callback.message.edit_text(text, reply_markup=trip_kb(trip, is_owner), parse_mode="HTML")
     await callback.answer()
 
@@ -349,7 +456,7 @@ async def trip_invite(callback: CallbackQuery) -> None:
 
 # ── Приём / отклонение приглашения ────────────────────────────
 @router.callback_query(F.data.startswith("trip_accept:"))
-async def trip_accept(callback: CallbackQuery) -> None:
+async def trip_accept(callback: CallbackQuery, state: FSMContext) -> None:
     code = callback.data.split(":", 1)[1]
     async with get_session() as session:
         user = await get_or_create_user(
@@ -359,19 +466,16 @@ async def trip_accept(callback: CallbackQuery) -> None:
         trip = res.scalar_one_or_none()
 
         if trip is None:
-            await callback.message.edit_text(
-                "❌ Приглашение недействительно.", reply_markup=menu_kb()
-            )
+            await callback.message.edit_text("❌ Приглашение недействительно.", reply_markup=menu_kb())
             await callback.answer()
             return
         if trip.is_archived:
-            await callback.message.edit_text(
-                "Эта поездка уже закрыта.", reply_markup=menu_kb()
-            )
+            await callback.message.edit_text("Эта поездка уже закрыта.", reply_markup=menu_kb())
             await callback.answer()
             return
         if await _is_member(session, trip.id, user.id):
             text = await _trip_text(session, trip)
+            await state.set_state(TripFSM.browsing)
             await callback.message.edit_text(
                 "Ты уже участник этой поездки 🙂\n\n" + text,
                 reply_markup=trip_kb(trip, trip.owner_id == user.id),
@@ -392,6 +496,7 @@ async def trip_accept(callback: CallbackQuery) -> None:
         await session.commit()
         text = await _trip_text(session, trip)
 
+    await state.set_state(TripFSM.browsing)
     await callback.message.edit_text(
         "✅ Ты присоединился к поездке!\n\n" + text,
         reply_markup=trip_kb(trip, False),
@@ -441,7 +546,7 @@ async def trip_expense_amount(message: Message, state: FSMContext) -> None:
         text = await _trip_text(session, trip)
         is_owner = trip.owner_id == user.id
 
-    await state.clear()
+    await state.set_state(TripFSM.browsing)
     await message.answer(text, reply_markup=trip_kb(trip, is_owner), parse_mode="HTML")
 
 
@@ -499,15 +604,13 @@ async def trip_payment_amount(message: Message, state: FSMContext) -> None:
             session, message.from_user.id, message.from_user.first_name or ""
         )
         session.add(
-            TripPayment(
-                trip_id=tid, from_user_id=user.id, to_user_id=to_uid, amount=amount
-            )
+            TripPayment(trip_id=tid, from_user_id=user.id, to_user_id=to_uid, amount=amount)
         )
         await session.commit()
         trip = await session.get(Trip, tid)
         text = await _settle_text(session, trip)
 
-    await state.clear()
+    await state.set_state(TripFSM.browsing)
     await message.answer(text, reply_markup=back_trip_kb(tid), parse_mode="HTML")
 
 
@@ -527,7 +630,7 @@ async def trip_settle(callback: CallbackQuery) -> None:
 
 # ── Архив / возврат / удаление (только владелец) ──────────────
 @router.callback_query(F.data.startswith("trip_archive:"))
-async def trip_archive(callback: CallbackQuery) -> None:
+async def trip_archive(callback: CallbackQuery, state: FSMContext) -> None:
     tid = int(callback.data.split(":")[1])
     async with get_session() as session:
         user = await get_or_create_user(
@@ -540,12 +643,13 @@ async def trip_archive(callback: CallbackQuery) -> None:
         trip.is_archived = True
         await session.commit()
         text, kb = await _home_view(session, user.id)
+    await state.set_state(TripFSM.browsing)
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await callback.answer("Поездка отправлена в архив")
 
 
 @router.callback_query(F.data.startswith("trip_unarchive:"))
-async def trip_unarchive(callback: CallbackQuery) -> None:
+async def trip_unarchive(callback: CallbackQuery, state: FSMContext) -> None:
     tid = int(callback.data.split(":")[1])
     async with get_session() as session:
         user = await get_or_create_user(
@@ -558,6 +662,7 @@ async def trip_unarchive(callback: CallbackQuery) -> None:
         trip.is_archived = False
         await session.commit()
         text = await _trip_text(session, trip)
+    await state.set_state(TripFSM.browsing)
     await callback.message.edit_text(text, reply_markup=trip_kb(trip, True), parse_mode="HTML")
     await callback.answer("Поездка снова активна")
 
@@ -594,6 +699,6 @@ async def trip_delok(callback: CallbackQuery, state: FSMContext) -> None:
         await session.commit()
         text, kb = await _home_view(session, user.id)
 
-    await state.clear()
+    await state.set_state(TripFSM.browsing)
     await callback.message.edit_text("✅ Поездка удалена.\n\n" + text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
