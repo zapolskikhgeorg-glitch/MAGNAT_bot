@@ -5,7 +5,7 @@ from bot.models import Category
 
 
 def categories_keyboard(categories: list[Category]) -> InlineKeyboardMarkup:
-    """Клавиатура выбора категории расхода: 2 в ряд + отмена."""
+    """Выбор категории расхода при записи траты."""
     builder = InlineKeyboardBuilder()
     for cat in categories:
         builder.button(text=f"{cat.icon} {cat.name}", callback_data=f"cat:{cat.id}")
@@ -15,7 +15,7 @@ def categories_keyboard(categories: list[Category]) -> InlineKeyboardMarkup:
 
 
 def income_categories_keyboard(categories: list[Category]) -> InlineKeyboardMarkup:
-    """Клавиатура выбора категории дохода."""
+    """Выбор категории дохода при записи дохода."""
     builder = InlineKeyboardBuilder()
     for cat in categories:
         builder.button(text=f"{cat.icon} {cat.name}", callback_data=f"inccat:{cat.id}")
@@ -25,7 +25,6 @@ def income_categories_keyboard(categories: list[Category]) -> InlineKeyboardMark
 
 
 def undo_keyboard(operation_id: int) -> InlineKeyboardMarkup:
-    """Кнопки под записанной операцией."""
     builder = InlineKeyboardBuilder()
     builder.button(text="↩️ Отменить запись", callback_data=f"undo:{operation_id}")
     builder.button(text="🏠 Меню", callback_data="menu")
@@ -34,40 +33,39 @@ def undo_keyboard(operation_id: int) -> InlineKeyboardMarkup:
 
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
-    """Главное меню бота — полный набор, по 2 в ряд."""
+    """Главное меню — 8 кнопок по 2 в ряд, в нужном порядке."""
     builder = InlineKeyboardBuilder()
     builder.button(text="📊 Статистика", callback_data="stats")
-    builder.button(text="📝 Последние", callback_data="recent")
     builder.button(text="💰 Доход", callback_data="add_income")
     builder.button(text="🔔 Лимиты", callback_data="limits")
+    builder.button(text="👨‍👩‍👧 Семья", callback_data="family")
+    builder.button(text="📂 Категории", callback_data="categories")
     builder.button(text="📤 Экспорт", callback_data="export")
     builder.button(text="🔍 Поиск", callback_data="search")
-    builder.button(text="👨‍👩‍👧 Семья", callback_data="family")
     builder.button(text="🧾 Splitwise", callback_data="splitwise")
     builder.adjust(2)
     return builder.as_markup()
 
 
 def stats_period_keyboard() -> InlineKeyboardMarkup:
-    """Выбор периода для статистики."""
+    """Периоды статистики + кнопка последних операций + меню."""
     builder = InlineKeyboardBuilder()
     builder.button(text="📅 Сегодня", callback_data="stats:today")
     builder.button(text="🗓 Неделя", callback_data="stats:week")
     builder.button(text="📆 Месяц", callback_data="stats:month")
+    builder.button(text="📝 Последние операции", callback_data="recent")
     builder.button(text="🏠 Меню", callback_data="menu")
-    builder.adjust(2, 1, 1)
+    builder.adjust(3, 1, 1)
     return builder.as_markup()
 
 
 def back_to_menu_keyboard() -> InlineKeyboardMarkup:
-    """Одна кнопка возврата в главное меню."""
     builder = InlineKeyboardBuilder()
     builder.button(text="🏠 Меню", callback_data="menu")
     return builder.as_markup()
 
 
 def limits_keyboard(limits: list[tuple[int, str]]) -> InlineKeyboardMarkup:
-    """Экран лимитов: каждый лимит — кнопка (нажатие = удалить) + добавить + меню."""
     builder = InlineKeyboardBuilder()
     for limit_id, label in limits:
         builder.button(text=label, callback_data=f"limit_del:{limit_id}")
@@ -78,10 +76,39 @@ def limits_keyboard(limits: list[tuple[int, str]]) -> InlineKeyboardMarkup:
 
 
 def limit_categories_keyboard(categories: list[Category]) -> InlineKeyboardMarkup:
-    """Выбор категории расхода для установки лимита."""
     builder = InlineKeyboardBuilder()
     for cat in categories:
         builder.button(text=f"{cat.icon} {cat.name}", callback_data=f"limit_cat:{cat.id}")
     builder.adjust(2)
     builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="limits"))
+    return builder.as_markup()
+
+
+# ===== Экран управления категориями =====
+
+def categories_menu_keyboard() -> InlineKeyboardMarkup:
+    """Выбор: смотреть/редактировать расходы или доходы."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="💸 Расходные", callback_data="cats_list:expense")
+    builder.button(text="💰 Доходные", callback_data="cats_list:income")
+    builder.button(text="🏠 Меню", callback_data="menu")
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+def categories_edit_keyboard(categories: list[Category], cat_type: str) -> InlineKeyboardMarkup:
+    """Список категорий (нажатие = удалить) + добавить + назад."""
+    builder = InlineKeyboardBuilder()
+    for cat in categories:
+        builder.button(
+            text=f"🗑 {cat.icon} {cat.name}",
+            callback_data=f"cat_del:{cat.id}",
+        )
+    builder.adjust(1)
+    builder.row(
+        InlineKeyboardButton(text="➕ Добавить", callback_data=f"cat_add:{cat_type}")
+    )
+    builder.row(
+        InlineKeyboardButton(text="◀️ Назад", callback_data="categories")
+    )
     return builder.as_markup()
