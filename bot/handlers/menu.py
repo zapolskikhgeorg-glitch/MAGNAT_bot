@@ -16,7 +16,12 @@ from bot.models import Category, Operation, User
 
 router = Router()
 
-MENU_TEXT = "🏠 Главное меню\n\nВыбери действие или просто напиши сумму, чтобы записать расход."
+import logging
+
+@router.callback_query()
+async def _debug_catch_all(callback: CallbackQuery) -> None:
+    logging.warning(f"⚡ CALLBACK DATA = {callback.data!r}")
+    await callback.answer(f"debug: {callback.data}", show_alert=True)
 
 
 def format_money(value) -> str:
