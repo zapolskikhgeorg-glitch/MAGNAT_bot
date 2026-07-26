@@ -7,7 +7,7 @@ from aiogram.types import BotCommand
 
 from bot.config import BOT_TOKEN
 from bot.database import init_db
-from bot.handlers import start, menu, expense, limits
+from bot.handlers import start, menu, expense, limits, categories
 
 logging.basicConfig(level=logging.INFO)
 
@@ -27,6 +27,7 @@ async def main() -> None:
     dp.include_router(menu.router)
     dp.include_router(expense.router)
     dp.include_router(limits.router)
+    dp.include_router(categories.router)
     await set_commands(bot)
     logging.info("Бот запущен")
     await dp.start_polling(bot)
