@@ -194,11 +194,6 @@ async def stub_export(callback: CallbackQuery) -> None:
     await callback.answer("🚧 Экспорт скоро появится", show_alert=True)
 
 
-@router.callback_query(F.data == "search")
-async def stub_search(callback: CallbackQuery) -> None:
-    await callback.answer("🚧 Поиск скоро появится", show_alert=True)
-
-
 @router.callback_query(F.data == "family")
 async def stub_family(callback: CallbackQuery) -> None:
     await callback.answer("🚧 Семья скоро появится", show_alert=True)
