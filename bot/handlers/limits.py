@@ -1,5 +1,5 @@
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
@@ -16,11 +16,9 @@ router = Router()
 
 
 def fmt_money(value) -> str:
-    """1250 -> '1 250', 1250.5 -> '1 250,50'."""
-    q = Decimal(str(value))
-    if q == q.to_integral_value():
-        return f"{int(q):,}".replace(",", " ")
-    return f"{q:,.2f}".replace(",", " ").replace(".", ",")
+    """Без копеек: 1250 -> '1 250', 1250.5 -> '1 251'."""
+    q = Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return f"{int(q):,}".replace(",", " ")
 
 
 async def month_spent(session, user_id: int, category_id: int) -> Decimal:
