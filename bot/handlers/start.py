@@ -1,12 +1,12 @@
 from aiogram import Router
 from aiogram.filters import CommandStart, CommandObject
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from sqlalchemy import select
 
 from bot.database import get_session
 from bot.keyboards import main_menu_keyboard, family_invite_accept_keyboard
-from bot.models import User, Family
+from bot.models import User, Family, Trip
 
 router = Router()
 
@@ -22,10 +22,16 @@ WELCOME_TEXT = (
 )
 
 
+def _trip_accept_kb(code: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Принять", callback_data=f"trip_accept:{code}")],
+        [InlineKeyboardButton(text="❌ Отклонить", callback_data="trip_decline")],
+    ])
+
+
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext, command: CommandObject) -> None:
     await state.clear()
-
     # Регистрируем пользователя (если ещё нет)
     async with get_session() as session:
         result = await session.execute(
@@ -41,8 +47,9 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
             await session.commit()
         current_family_id = user.family_id
 
-    # Проверяем: пришёл ли пользователь по ссылке-приглашению вида inv_XXXX
     payload = command.args or ""
+
+    # --- Приглашение в семью (inv_) ---
     if payload.startswith("inv_"):
         code = payload[4:]
         async with get_session() as session:
@@ -50,24 +57,20 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
                 select(Family).where(Family.invite_code == code)
             )
             fam = fam_result.scalar_one_or_none()
-
             if fam is None:
                 await message.answer(
                     "❌ Приглашение недействительно или устарело.",
                     reply_markup=main_menu_keyboard(),
                 )
                 return
-
             if current_family_id == fam.id:
                 await message.answer(
                     "Ты уже состоишь в этой семье 🙂",
                     reply_markup=main_menu_keyboard(),
                 )
                 return
-
             owner = await session.get(User, fam.owner_id)
             owner_name = (owner.first_name if owner and owner.first_name else "пользователь")
-
         await message.answer(
             f"👨‍👩‍👧 Тебя приглашают в семейный бюджет!\n\n"
             f"Создатель: <b>{owner_name}</b>\n\n"
@@ -77,7 +80,34 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
         )
         return
 
-    # Обычный старт
+    # --- Приглашение в поездку Splitwise (spl_) ---
+    if payload.startswith("spl_"):
+        code = payload[4:]
+        async with get_session() as session:
+            trip_result = await session.execute(
+                select(Trip).where(Trip.invite_code == code)
+            )
+            trip = trip_result.scalar_one_or_none()
+        if trip is None:
+            await message.answer(
+                "❌ Приглашение в поездку недействительно или устарело.",
+                reply_markup=main_menu_keyboard(),
+            )
+            return
+        if trip.is_archived:
+            await message.answer(
+                "Эта поездка уже закрыта (в архиве).",
+                reply_markup=main_menu_keyboard(),
+            )
+            return
+        await message.answer(
+            f"🧾 Тебя приглашают в поездку «{trip.name}»!\n\n"
+            "Расходы будете считать вместе, а бот покажет, кто кому сколько должен.",
+            reply_markup=_trip_accept_kb(code),
+        )
+        return
+
+    # --- Обычный старт ---
     await message.answer(
         WELCOME_TEXT, reply_markup=main_menu_keyboard(), parse_mode="HTML"
     )
