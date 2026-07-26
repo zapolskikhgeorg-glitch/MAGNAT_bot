@@ -14,6 +14,7 @@ from bot.handlers import (
     search,
     export,
     family,
+    splitwise,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +39,7 @@ async def main() -> None:
     dp.include_router(search.router)
     dp.include_router(export.router)
     dp.include_router(family.router)
+    dp.include_router(splitwise.router)
     await set_commands(bot)
     logging.info("Бот запущен")
     await dp.start_polling(bot)
