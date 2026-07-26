@@ -7,7 +7,7 @@ from aiogram.types import BotCommand
 
 from bot.config import BOT_TOKEN
 from bot.database import init_db
-from bot.handlers import start, menu, expense, limits, categories, search
+from bot.handlers import start, menu, expense, limits, categories, search, export
 
 logging.basicConfig(level=logging.INFO)
 
@@ -25,6 +25,7 @@ async def main() -> None:
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(start.router)
     dp.include_router(search.router)
+    dp.include_router(export.router)
     dp.include_router(menu.router)
     dp.include_router(expense.router)
     dp.include_router(limits.router)
