@@ -16,3 +16,6 @@ class AddLimit(StatesGroup):
 
 class AddCategory(StatesGroup):
     waiting_name = State()   # ввод названия новой категории
+
+class Search(StatesGroup):
+    waiting_query = State()
