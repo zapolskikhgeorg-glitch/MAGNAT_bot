@@ -121,7 +121,9 @@ async def handle_category_choice(callback: CallbackQuery, state: FSMContext) -> 
 @router.callback_query(F.data == "cancel_add")
 async def handle_cancel_add(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    await callback.message.edit_text("Добавление отменено.")
+    await callback.message.edit_text(
+        "Добавление отменено.", reply_markup=back_to_menu_keyboard()
+    )
     await callback.answer()
 
 @router.callback_query(F.data.startswith("undo:"))
