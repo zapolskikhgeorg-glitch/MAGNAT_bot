@@ -65,13 +65,24 @@ def back_to_menu_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def limits_keyboard(limits: list[tuple[int, str]]) -> InlineKeyboardMarkup:
+def limits_keyboard(has_limits: bool) -> InlineKeyboardMarkup:
+    """Экран лимитов: сами лимиты показаны текстом, тут только кнопки действий."""
     builder = InlineKeyboardBuilder()
-    for limit_id, label in limits:
-        builder.button(text=label, callback_data=f"limit_del:{limit_id}")
     builder.button(text="➕ Добавить лимит", callback_data="limit_add")
+    if has_limits:
+        builder.button(text="➖ Удалить лимит", callback_data="limit_del_menu")
     builder.button(text="🏠 Меню", callback_data="menu")
     builder.adjust(1)
+    return builder.as_markup()
+
+
+def limit_delete_keyboard(limits: list[tuple[int, str]]) -> InlineKeyboardMarkup:
+    """Режим удаления: каждый лимит = кнопка выбора для удаления."""
+    builder = InlineKeyboardBuilder()
+    for limit_id, label in limits:
+        builder.button(text=f"🗑 {label}", callback_data=f"limit_del:{limit_id}")
+    builder.adjust(1)
+    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="limits"))
     return builder.as_markup()
 
 
