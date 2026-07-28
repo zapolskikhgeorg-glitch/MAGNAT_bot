@@ -14,7 +14,7 @@ from bot.keyboards import (
     undo_keyboard,
     back_to_menu_keyboard,
 )
-from bot.models import Category, Operation, CategoryLimit
+from bot.models import Category, Operation, CategoryLimit, HiddenCategory
 from bot.states import AddOperation, AddIncome
 from bot.utils import get_or_create_user
 from bot.handlers.limits import month_spent, fmt_money
@@ -42,18 +42,21 @@ def parse_amount(text: str) -> tuple[int, str] | None:
 
 
 async def _load_categories(session, user_id: int, cat_type: str) -> list[Category]:
-    """Стандартные категории + личные категории этого пользователя."""
-    result = await session.execute(
-        select(Category)
-        .where(
-            Category.type == cat_type,
-            or_(
-                Category.is_default == True,
-                Category.user_id == user_id,
-            ),
-        )
-        .order_by(Category.is_default.desc(), Category.id)
+    """Стандартные + личные категории пользователя, кроме скрытых им."""
+    hidden_result = await session.execute(
+        select(HiddenCategory.category_id).where(HiddenCategory.user_id == user_id)
     )
+    hidden = [row[0] for row in hidden_result.all()]
+
+    query = select(Category).where(
+        Category.type == cat_type,
+        or_(Category.is_default == True, Category.user_id == user_id),
+    )
+    if hidden:
+        query = query.where(Category.id.notin_(hidden))
+    query = query.order_by(Category.is_default.desc(), Category.id)
+
+    result = await session.execute(query)
     return list(result.scalars().all())
 
 
