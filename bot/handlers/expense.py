@@ -5,7 +5,7 @@ from aiogram import Router, F
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 from bot.database import get_session
 from bot.keyboards import (
@@ -41,6 +41,22 @@ def parse_amount(text: str) -> tuple[int, str] | None:
     return int(amount), description
 
 
+async def _load_categories(session, user_id: int, cat_type: str) -> list[Category]:
+    """Стандартные категории + личные категории этого пользователя."""
+    result = await session.execute(
+        select(Category)
+        .where(
+            Category.type == cat_type,
+            or_(
+                Category.is_default == True,
+                Category.user_id == user_id,
+            ),
+        )
+        .order_by(Category.is_default.desc(), Category.id)
+    )
+    return list(result.scalars().all())
+
+
 # =========================================================
 #  РАСХОД: пишешь сумму → сразу категории расхода
 # =========================================================
@@ -56,12 +72,10 @@ async def handle_plain_text(message: Message, state: FSMContext) -> None:
     amount, description = parsed
 
     async with get_session() as session:
-        result = await session.execute(
-            select(Category).where(
-                Category.type == "expense", Category.is_default == True
-            )
+        user = await get_or_create_user(
+            session, message.from_user.id, message.from_user.first_name or ""
         )
-        categories = list(result.scalars().all())
+        categories = await _load_categories(session, user.id, "expense")
 
     await state.update_data(amount=amount, description=description)
     await state.set_state(AddOperation.waiting_category)
@@ -161,12 +175,10 @@ async def income_amount(message: Message, state: FSMContext) -> None:
     amount, description = parsed
 
     async with get_session() as session:
-        result = await session.execute(
-            select(Category).where(
-                Category.type == "income", Category.is_default == True
-            )
+        user = await get_or_create_user(
+            session, message.from_user.id, message.from_user.first_name or ""
         )
-        categories = list(result.scalars().all())
+        categories = await _load_categories(session, user.id, "income")
 
     await state.update_data(amount=amount, description=description)
     await state.set_state(AddIncome.waiting_category)
