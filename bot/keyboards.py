@@ -40,7 +40,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="💰 Доход", callback_data="add_income")
     # частое
     builder.button(text="📂 Категории", callback_data="categories")
-     builder.button(text="🔍 Поиск", callback_data="search")
+    builder.button(text="🔍 Поиск", callback_data="search")
     # настройки / периодически
     builder.button(text="🔔 Лимиты", callback_data="limits")
     builder.button(text="📤 Экспорт", callback_data="export")
