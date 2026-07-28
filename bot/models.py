@@ -39,6 +39,11 @@ class Category(Base):
     is_default: Mapped[bool] = mapped_column(Boolean, default=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
+class HiddenCategory(Base):
+    __tablename__ = "hidden_categories"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"))
 
 class Operation(Base):
     __tablename__ = "operations"
