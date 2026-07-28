@@ -33,15 +33,19 @@ def undo_keyboard(operation_id: int) -> InlineKeyboardMarkup:
 
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
-    """Главное меню — 8 кнопок по 2 в ряд, в нужном порядке."""
+    """Главное меню — сгруппировано по частоте использования, 2 кнопки в ряд."""
     builder = InlineKeyboardBuilder()
+    # ежедневное
     builder.button(text="📊 Статистика", callback_data="stats")
     builder.button(text="💰 Доход", callback_data="add_income")
-    builder.button(text="🔔 Лимиты", callback_data="limits")
-    builder.button(text="👨‍👩‍👧 Семья", callback_data="family")
-    builder.button(text="📂 Категории", callback_data="categories")
-    builder.button(text="📤 Экспорт", callback_data="export")
+    # частое
     builder.button(text="🔍 Поиск", callback_data="search")
+    builder.button(text="📂 Категории", callback_data="categories")
+    # настройки / периодически
+    builder.button(text="🔔 Лимиты", callback_data="limits")
+    builder.button(text="📤 Экспорт", callback_data="export")
+    # совместное
+    builder.button(text="👨‍👩‍👧 Семья", callback_data="family")
     builder.button(text="🧾 Splitwise", callback_data="splitwise")
     builder.adjust(2)
     return builder.as_markup()
