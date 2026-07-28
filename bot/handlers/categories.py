@@ -1,7 +1,7 @@
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
-from sqlalchemy import select, update
+from sqlalchemy import select, update, or_
 
 from bot.database import get_session
 from bot.keyboards import (
@@ -12,18 +12,26 @@ from bot.keyboards import (
 )
 from bot.models import Category, Operation
 from bot.states import AddCategory
+from bot.utils import get_or_create_user
 
 router = Router()
 
 TYPE_LABEL = {"expense": "💸 Расходные", "income": "💰 Доходные"}
 
 
-async def _load(cat_type: str) -> list[Category]:
+async def _load(user_id: int, cat_type: str) -> list[Category]:
+    """Стандартные категории + личные категории этого пользователя."""
     async with get_session() as session:
         result = await session.execute(
             select(Category)
-            .where(Category.type == cat_type)
-            .order_by(Category.id)
+            .where(
+                Category.type == cat_type,
+                or_(
+                    Category.is_default == True,
+                    Category.user_id == user_id,
+                ),
+            )
+            .order_by(Category.is_default.desc(), Category.id)
         )
         return list(result.scalars().all())
 
@@ -45,7 +53,12 @@ async def categories_root(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 async def _show_view(callback: CallbackQuery, cat_type: str) -> None:
-    categories = await _load(cat_type)
+    async with get_session() as session:
+        user = await get_or_create_user(
+            session, callback.from_user.id, callback.from_user.first_name or ""
+        )
+        user_id = user.id
+    categories = await _load(user_id, cat_type)
     label = TYPE_LABEL[cat_type]
     if categories:
         text = (
@@ -73,11 +86,26 @@ async def show_categories(callback: CallbackQuery, state: FSMContext) -> None:
 async def delete_menu(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     cat_type = callback.data.split(":")[1]
-    categories = await _load(cat_type)
+    async with get_session() as session:
+        user = await get_or_create_user(
+            session, callback.from_user.id, callback.from_user.first_name or ""
+        )
+        user_id = user.id
+    categories = await _load(user_id, cat_type)
+    # Удалять можно только свои категории (стандартные не трогаем)
+    own = [c for c in categories if not c.is_default]
     label = TYPE_LABEL[cat_type]
+    if not own:
+        await callback.message.edit_text(
+            f"{label} — удаление\n\nУ тебя нет своих категорий для удаления "
+            f"(стандартные удалять нельзя).",
+            reply_markup=categories_view_keyboard(categories, cat_type),
+        )
+        await callback.answer()
+        return
     await callback.message.edit_text(
         f"{label} — удаление\n\nНажми на категорию, чтобы удалить её.",
-        reply_markup=categories_delete_keyboard(categories, cat_type),
+        reply_markup=categories_delete_keyboard(own, cat_type),
     )
     await callback.answer()
 
@@ -87,9 +115,16 @@ async def delete_category(callback: CallbackQuery) -> None:
     category_id = int(callback.data.split(":")[1])
 
     async with get_session() as session:
+        user = await get_or_create_user(
+            session, callback.from_user.id, callback.from_user.first_name or ""
+        )
         category = await session.get(Category, category_id)
         if category is None:
             await callback.answer("Категория не найдена")
+            return
+        # Защита: нельзя удалить стандартную или чужую категорию
+        if category.is_default or category.user_id != user.id:
+            await callback.answer("Эту категорию удалить нельзя", show_alert=True)
             return
         cat_type = category.type
 
@@ -101,19 +136,20 @@ async def delete_category(callback: CallbackQuery) -> None:
         )
         await session.delete(category)
         await session.commit()
+        user_id = user.id
 
-    # Остаёмся в режиме удаления с обновлённым списком.
-    categories = await _load(cat_type)
+    categories = await _load(user_id, cat_type)
+    own = [c for c in categories if not c.is_default]
     label = TYPE_LABEL[cat_type]
-    if categories:
+    if own:
         await callback.message.edit_text(
             f"{label} — удаление\n\nНажми на категорию, чтобы удалить её.",
-            reply_markup=categories_delete_keyboard(categories, cat_type),
+            reply_markup=categories_delete_keyboard(own, cat_type),
         )
     else:
         await callback.message.edit_text(
-            f"{label} категории\n\nВсе категории удалены. Добавь новую!",
-            reply_markup=categories_view_keyboard([], cat_type),
+            f"{label} категории\n\nСвоих категорий не осталось. Добавь новую!",
+            reply_markup=categories_view_keyboard(categories, cat_type),
         )
     await callback.answer("Категория удалена")
 
@@ -157,12 +193,22 @@ async def add_category_save(message: Message, state: FSMContext) -> None:
         name = raw
 
     async with get_session() as session:
+        user = await get_or_create_user(
+            session, message.from_user.id, message.from_user.first_name or ""
+        )
         session.add(
-            Category(name=name, icon=icon, type=cat_type, is_default=False)
+            Category(
+                name=name,
+                icon=icon,
+                type=cat_type,
+                is_default=False,
+                user_id=user.id,
+            )
         )
         await session.commit()
+        user_id = user.id
 
-    categories = await _load(cat_type)
+    categories = await _load(user_id, cat_type)
     await state.clear()
 
     label = TYPE_LABEL[cat_type]
