@@ -19,6 +19,11 @@ router = Router()
 
 MAX_MEMBERS = 2
 
+FAMILY_HINT = (
+    "Общий бюджет на двоих: расходы и доходы считаются вместе, "
+    "видно кто куда и сколько потратил."
+)
+
 
 async def get_or_create_user(session, tg_user) -> User:
     result = await session.execute(
@@ -43,9 +48,7 @@ async def render_family_menu(session, user: User):
     """Возвращает (текст, клавиатура) главного экрана семьи."""
     if user.family_id is None:
         text = (
-            "👨‍👩‍👧 Семейный бюджет\n\n"
-            "Объедини расходы и доходы с близким человеком — вся статистика станет общей, "
-            "и будет видно, кто сколько потратил.\n\n"
+            f"👨‍👩‍👧 Семейный бюджет\n\n{FAMILY_HINT}\n\n"
             "Создай семейный бюджет и пригласи участника (до 2 человек)."
         )
         return text, family_menu_no_family_keyboard()
@@ -53,13 +56,11 @@ async def render_family_menu(session, user: User):
     fam = await session.get(Family, user.family_id)
     members = await _members(session, user.family_id)
 
-    lines = [f"👨‍👩‍👧 {fam.name}", ""]
+    lines = [f"👨‍👩‍👧 {fam.name}", "", FAMILY_HINT, ""]
     lines.append(f"Участников: {len(members)}/{MAX_MEMBERS}")
     for m in members:
         crown = " 👑" if m.id == fam.owner_id else ""
         lines.append(f"• {m.first_name or 'Без имени'}{crown}")
-    lines.append("")
-    lines.append("Ваши расходы и доходы считаются вместе.")
     return "\n".join(lines), family_menu_keyboard()
 
 
