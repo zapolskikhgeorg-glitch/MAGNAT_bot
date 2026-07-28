@@ -20,6 +20,23 @@ router = Router()
 
 MENU_TEXT = "🏠 Главное меню\n\nВыбери, что нужно, или просто напиши сумму."
 
+# chat_id -> message_id последнего «живого» сообщения-меню/приветствия.
+# Чтобы в чате не копились старые меню: новое приходит — прежнее удаляем.
+_last_menu: dict[int, int] = {}
+
+
+async def send_anchor(message: Message, text: str, reply_markup, parse_mode=None) -> None:
+    """Удаляет прежнее живое меню в этом чате и отправляет новое, запоминая его id."""
+    chat_id = message.chat.id
+    prev = _last_menu.get(chat_id)
+    if prev is not None:
+        try:
+            await message.bot.delete_message(chat_id, prev)
+        except Exception:
+            pass
+    sent = await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
+    _last_menu[chat_id] = sent.message_id
+
 
 def format_money(value) -> str:
     return f"{int(round(value)):,}".replace(",", " ") + " ₽"
@@ -78,13 +95,26 @@ def recent_delete_keyboard(rows) -> InlineKeyboardMarkup:
 @router.message(Command("menu"))
 async def cmd_menu(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer(MENU_TEXT, reply_markup=main_menu_keyboard())
+    try:
+        await message.delete()  # убираем команду «/menu» из чата
+    except Exception:
+        pass
+    await send_anchor(message, MENU_TEXT, main_menu_keyboard())
 
 
 @router.callback_query(F.data == "menu")
 async def show_menu(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
+    chat_id = callback.message.chat.id
+    prev = _last_menu.get(chat_id)
+    # Если где-то висит другое живое меню — уберём его, оставим одно.
+    if prev is not None and prev != callback.message.message_id:
+        try:
+            await callback.bot.delete_message(chat_id, prev)
+        except Exception:
+            pass
     await callback.message.edit_text(MENU_TEXT, reply_markup=main_menu_keyboard())
+    _last_menu[chat_id] = callback.message.message_id
     await callback.answer()
 
 
