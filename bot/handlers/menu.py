@@ -105,16 +105,24 @@ async def cmd_menu(message: Message, state: FSMContext) -> None:
 @router.callback_query(F.data == "menu")
 async def show_menu(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    chat_id = callback.message.chat.id
-    prev = _last_menu.get(chat_id)
-    # Если где-то висит другое живое меню — уберём его, оставим одно.
-    if prev is not None and prev != callback.message.message_id:
-        try:
-            await callback.bot.delete_message(chat_id, prev)
-        except Exception:
-            pass
-    await callback.message.edit_text(MENU_TEXT, reply_markup=main_menu_keyboard())
-    _last_menu[chat_id] = callback.message.message_id
+    msg = callback.message
+    chat_id = msg.chat.id
+
+    if msg.text is not None:
+        # Обычное текстовое сообщение — редактируем на месте.
+        prev = _last_menu.get(chat_id)
+        if prev is not None and prev != msg.message_id:
+            try:
+                await callback.bot.delete_message(chat_id, prev)
+            except Exception:
+                pass
+        await msg.edit_text(MENU_TEXT, reply_markup=main_menu_keyboard())
+        _last_menu[chat_id] = msg.message_id
+    else:
+        # Сообщение с файлом/медиа (например, экспорт) редактировать в текст нельзя —
+        # присылаем свежее меню отдельным сообщением, сам файл оставляем.
+        await send_anchor(msg, MENU_TEXT, main_menu_keyboard())
+
     await callback.answer()
 
 
