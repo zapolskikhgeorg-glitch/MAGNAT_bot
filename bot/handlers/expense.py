@@ -5,7 +5,7 @@ from aiogram import Router, F
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 
 from bot.database import get_session
 from bot.keyboards import (
@@ -42,11 +42,22 @@ def parse_amount(text: str) -> tuple[int, str] | None:
 
 
 async def _load_categories(session, user_id: int, cat_type: str) -> list[Category]:
-    """Стандартные + личные категории пользователя, кроме скрытых им."""
+    """
+    Стандартные + личные категории пользователя, кроме скрытых им,
+    отсортированные по частоте использования (чаще выбирал — выше).
+    """
     hidden_result = await session.execute(
         select(HiddenCategory.category_id).where(HiddenCategory.user_id == user_id)
     )
     hidden = [row[0] for row in hidden_result.all()]
+
+    # Сколько раз пользователь выбирал каждую категорию (за всё время).
+    usage_result = await session.execute(
+        select(Operation.category_id, func.count(Operation.id))
+        .where(Operation.user_id == user_id, Operation.category_id.isnot(None))
+        .group_by(Operation.category_id)
+    )
+    usage = {cat_id: cnt for cat_id, cnt in usage_result.all()}
 
     query = select(Category).where(
         Category.type == cat_type,
@@ -54,10 +65,15 @@ async def _load_categories(session, user_id: int, cat_type: str) -> list[Categor
     )
     if hidden:
         query = query.where(Category.id.notin_(hidden))
-    query = query.order_by(Category.is_default.desc(), Category.id)
 
     result = await session.execute(query)
-    return list(result.scalars().all())
+    categories = list(result.scalars().all())
+
+    # Сортировка: частота ↓, затем стандартные раньше личных, затем по id.
+    categories.sort(
+        key=lambda c: (-usage.get(c.id, 0), 0 if c.is_default else 1, c.id)
+    )
+    return categories
 
 
 # =========================================================
