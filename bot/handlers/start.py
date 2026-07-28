@@ -7,6 +7,7 @@ from sqlalchemy import select
 from bot.database import get_session
 from bot.keyboards import main_menu_keyboard, family_invite_accept_keyboard
 from bot.models import User, Family, Trip
+from bot.handlers.menu import send_anchor
 
 router = Router()
 
@@ -28,6 +29,11 @@ def _trip_accept_kb(code: str) -> InlineKeyboardMarkup:
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext, command: CommandObject) -> None:
     await state.clear()
+    try:
+        await message.delete()  # убираем команду «/start» из чата
+    except Exception:
+        pass
+
     # Регистрируем пользователя (если ещё нет)
     async with get_session() as session:
         result = await session.execute(
@@ -103,7 +109,5 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
         )
         return
 
-    # --- Обычный старт ---
-    await message.answer(
-        WELCOME_TEXT, reply_markup=main_menu_keyboard(), parse_mode="HTML"
-    )
+    # --- Обычный старт (приветствие держим как одно живое сообщение) ---
+    await send_anchor(message, WELCOME_TEXT, main_menu_keyboard(), parse_mode="HTML")
