@@ -15,6 +15,11 @@ from bot.utils import get_or_create_user
 
 router = Router()
 
+LIMITS_HINT = (
+    "Держи траты под контролем: ставишь лимит на категорию, "
+    "бот подаст сигнал, когда пора притормозить."
+)
+
 
 def fmt_money(value) -> str:
     """Без копеек: 1250 -> '1 250', 1250.5 -> '1 251'."""
@@ -52,13 +57,12 @@ async def _render_limits(session, user_id: int):
 
     if not rows:
         text = (
-            "🔔 Лимиты\n\n"
-            "У тебя пока нет лимитов.\n"
-            "Лимит помогает держать под контролем траты по категории за месяц."
+            f"🔔 Лимиты\n\n{LIMITS_HINT}\n\n"
+            "Пока лимитов нет. Нажми «➕ Добавить лимит», чтобы поставить первый."
         )
         return text, []
 
-    text = "🔔 Лимиты за текущий месяц\n\n"
+    text = f"🔔 Лимиты за текущий месяц\n\n{LIMITS_HINT}\n\n"
     labels: list[tuple[int, str]] = []
     for limit, category in rows:
         spent = await month_spent(session, user_id, category.id)
