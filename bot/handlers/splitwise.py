@@ -130,7 +130,13 @@ async def _home_view(session, user_id: int):
     )
     trips = list(res.scalars().all())
 
-    lines = ["🧾 Splitwise — поездки", ""]
+    lines = [
+        "🧾 Splitwise — поездки",
+        "",
+        "Поездки с друзьями: каждый вносит свои траты, "
+        "а бот считает, кто кому сколько должен.",
+        "",
+    ]
     if not trips:
         lines.append("У тебя пока нет поездок. Создай первую 👇")
     else:
